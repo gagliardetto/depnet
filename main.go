@@ -132,7 +132,7 @@ func main() {
 					DoWithCallback(func(dep string) bool {
 						count++
 						Ln(dep)
-						if count > 100 {
+						if count > 1000 {
 							return false
 						}
 						return true
@@ -321,7 +321,6 @@ func (ldr *Loader) DoWithCallback(callback func(dep string) bool) error {
 		nextPage = extractNextPage(doc)
 	}
 
-	return nil
 }
 
 func (ldr *Loader) validateBasic() error {
@@ -437,8 +436,10 @@ func extractDependents(doc *goquery.Document) []string {
 }
 
 func extractNextPage(doc *goquery.Document) string {
-	next, ok := doc.Find(`[data-test-selector="pagination"]`).ChildrenFiltered("a").Last().Attr("href")
-	if ok {
+	pagination := doc.Find(`[data-test-selector="pagination"]`).ChildrenFiltered("a")
+	last := pagination.Last()
+	next, ok := last.Attr("href")
+	if ok && !strings.Contains(last.Text(), "Previous") {
 		return next
 	}
 	return ""
@@ -500,6 +501,7 @@ func extractSubPackages(doc *goquery.Document) SubPackageSlice {
 	return res
 }
 
+// extractCounts extracts the counts for repository and package dependents (or maybe also dependencies?)
 func extractCounts(doc *goquery.Document) (repoCount int, packageCount int) {
 	counts := doc.Find(`div.table-list-header-toggle`).ChildrenFiltered("a")
 
