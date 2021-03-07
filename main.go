@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -17,6 +16,8 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/gagliardetto/request"
 	. "github.com/gagliardetto/utilz"
+	"github.com/michenriksen/aquatone/agents"
+	"go.uber.org/ratelimit"
 )
 
 // TODO:
@@ -28,7 +29,11 @@ import (
 // - Iterate and add to array.
 
 // countCleaner is used to remove anything that is NOT a number.
-var countCleaner = regexp.MustCompile("[^0-9]+")
+var (
+	countCleaner = regexp.MustCompile("[^0-9]+")
+
+	apiRateLimiter = ratelimit.New(1, ratelimit.WithoutSlack)
+)
 
 func main() {
 
@@ -37,7 +42,7 @@ func main() {
 			// Request the HTML page.
 			res, err := os.Open(os.ExpandEnv("$GOPATH/src/github.com/gagliardetto/depnet/test-data/REPOSITORY.html"))
 			if err != nil {
-				log.Fatal(err)
+				Fataln(err)
 			}
 			deps, err := ExtractDependentsFromReader(res)
 			if err != nil {
@@ -50,11 +55,11 @@ func main() {
 			// Request the HTML page.
 			res, err := http.Get("https://github.com/eslint/eslint/network/dependents?dependent_type=REPOSITORY")
 			if err != nil {
-				log.Fatal(err)
+				Fataln(err)
 			}
 			defer res.Body.Close()
 			if res.StatusCode != 200 {
-				log.Fatalf("status code error: %d %s", res.StatusCode, res.Status)
+				Fatalf("status code error: %d %s", res.StatusCode, res.Status)
 			}
 			deps, err := ExtractDependentsFromReader(res.Body)
 			if err != nil {
@@ -74,7 +79,7 @@ func main() {
 			// Request the HTML page.
 			res, err := os.Open(os.ExpandEnv("$GOPATH/src/github.com/gagliardetto/depnet/test-data/PACKAGE.html"))
 			if err != nil {
-				log.Fatal(err)
+				Fataln(err)
 			}
 			deps, err := ExtractDependentsFromReader(res)
 			if err != nil {
@@ -87,11 +92,11 @@ func main() {
 			// Request the HTML page.
 			res, err := http.Get("https://github.com/eslint/eslint/network/dependents?dependent_type=PACKAGE")
 			if err != nil {
-				log.Fatal(err)
+				Fataln(err)
 			}
 			defer res.Body.Close()
 			if res.StatusCode != 200 {
-				log.Fatalf("status code error: %d %s", res.StatusCode, res.Status)
+				Fatalf("status code error: %d %s", res.StatusCode, res.Status)
 			}
 			deps, err := ExtractDependentsFromReader(res.Body)
 			if err != nil {
@@ -383,8 +388,37 @@ func (ldr *Loader) GetInfo() (*Info, error) {
 
 	return info, nil
 }
-func loadPage(url string) (*goquery.Document, error) {
+
+func newRequest() *request.Request {
+	apiRateLimiter.Take()
+
 	req := request.NewRequest(httpClient)
+	req.Headers = map[string]string{
+		//"accept":                    "*/*",
+		"authority":                 "github.com",
+		"cache-control":             "max-age=0",
+		"sec-ch-ua":                 `"Chromium";v="88", "Google Chrome";v="88", ";Not A Brand";v="99"`,
+		"sec-ch-ua-mobile":          "?0",
+		"dnt":                       "1",
+		"upgrade-insecure-requests": "1",
+		"accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+		"sec-fetch-site":            "none",
+		"sec-fetch-mode":            "navigate",
+		"sec-fetch-user":            "?1",
+		"sec-fetch-dest":            "document",
+		"accept-language":           "en-US,en;q=0.9",
+		"sec-gpc":                   "1",
+		"user-agent":                agents.RandomUserAgent(),
+		"referer":                   "https://github.com",
+		"accept-encoding":           "gzip",
+	}
+
+	return req
+}
+
+func loadPage(url string) (*goquery.Document, error) {
+
+	req := newRequest()
 	resp, err := req.Get(url)
 	if err != nil {
 		return nil, err
