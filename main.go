@@ -103,28 +103,46 @@ func main() {
 		}
 	}
 
-	{
-		info, err :=
-			NewLoader("eslint/eslint").
-				Type(TYPE_REPOSITORY).
-				GetInfo()
-		if err != nil {
-			panic(err)
-		}
-		spew.Dump(info)
+	repos := []string{
+		"eslint/eslint",     // NPM - javascript
+		"numpy/numpy",       // python
+		"symfony/symfony",   // Composer - php
+		"dotnet/maui",       // dotnet - C#
+		"apache/maven",      // Maven - java
+		"rubygems/rubygems", // rubygems - ruby
+		"yarnpkg/yarn",      // yarn - javascript
 	}
-	{
-		err :=
-			NewLoader("eslint/eslint").
-				Type(TYPE_REPOSITORY).
-				DoWithCallback(func(dep string) bool {
-					Ln(dep)
-					return true
-				})
-		if err != nil {
-			panic(err)
+	for _, repo := range repos { // Node:
+		Ln(LimeBG(repo))
+		{
+			info, err :=
+				NewLoader(repo).
+					Type(TYPE_REPOSITORY).
+					GetInfo()
+			if err != nil {
+				panic(err)
+			}
+			spew.Dump(info)
+		}
+		{
+			count := int64(0)
+			err :=
+				NewLoader(repo).
+					Type(TYPE_REPOSITORY).
+					DoWithCallback(func(dep string) bool {
+						count++
+						Ln(dep)
+						if count > 100 {
+							return false
+						}
+						return true
+					})
+			if err != nil {
+				panic(err)
+			}
 		}
 	}
+
 }
 
 var (
@@ -319,9 +337,11 @@ func (ldr *Loader) validateBasic() error {
 	return nil
 }
 
+// Info provides information about the dependency network of
+// a package.
 type Info struct {
-	SubPackages SubPackageSlice
-	Counts      *Counts
+	SubPackages      SubPackageSlice
+	DependentsCounts *Counts
 }
 
 type Counts struct {
@@ -357,7 +377,7 @@ func (ldr *Loader) GetInfo() (*Info, error) {
 	info.SubPackages = extractSubPackages(doc)
 
 	repoCount, packageCount := extractCounts(doc)
-	info.Counts = &Counts{
+	info.DependentsCounts = &Counts{
 		Repositories: repoCount,
 		Packages:     packageCount,
 	}
@@ -488,11 +508,8 @@ func extractCounts(doc *goquery.Document) (repoCount int, packageCount int) {
 
 		nameText := strings.TrimSpace(count.Text())
 
-		var netType string
 		processedString := countCleaner.ReplaceAllString(nameText, "")
 		if strings.Contains(nameText, "Repositor") {
-			netType = "REPOSITORY"
-
 			parsed, err := Atoi(processedString)
 			if err != nil {
 				panic(err)
@@ -500,16 +517,12 @@ func extractCounts(doc *goquery.Document) (repoCount int, packageCount int) {
 			repoCount = parsed
 		}
 		if strings.Contains(nameText, "Package") {
-			netType = "PACKAGE"
-
 			parsed, err := Atoi(processedString)
 			if err != nil {
 				panic(err)
 			}
 			packageCount = parsed
 		}
-
-		Sfln("Count %s: %q", netType, processedString)
 	})
 
 	return
