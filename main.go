@@ -1,134 +1,203 @@
 package main
 
 import (
-	"net/http"
+	"encoding/json"
+	"log"
 	"os"
-	"strings"
+	"sort"
+	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/gagliardetto/depnet/depnetloader"
+	ghc "github.com/gagliardetto/gh-client"
 	. "github.com/gagliardetto/utilz"
+	"github.com/google/go-github/github"
+	"github.com/urfave/cli"
 )
 
-// TODO:
-// - Input repo path
-// - Validate repo path
-// - Load first page for REPOSITORY (if not specified).
-// - Ask REPOSITORY or PACKAGE depdendents ? (show counts for both) (ask if not configured in a flag).
-// - If there are more than one package specified, ask which to choose (if flag is not set on a precise choice).
-// - Iterate and add to array.
+var gitCommitSHA = ""
+var (
+	ghClient *ghc.Client
+)
+
+type M map[string]interface{}
 
 func main() {
 
-	if true { // Repos:
-		if true {
-			// Request the HTML page.
-			res, err := os.Open(os.ExpandEnv("$GOPATH/src/github.com/gagliardetto/depnet/test-data/REPOSITORY.html"))
-			if err != nil {
-				Fataln(err)
+	var ghToken string
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	app := &cli.App{
+		Name:        "depnet",
+		Version:     gitCommitSHA,
+		Description: "Unofficial Github Dependency Network CLI — https://github.com/gagliardetto/depnet",
+		Before: func(c *cli.Context) error {
+
+			if ghToken == "" {
+				return nil
 			}
-			deps, err := depnetloader.ExtractDependentsFromReader(res)
-			if err != nil {
-				panic(err)
+			// Setup a new github client:
+			ghClient = ghc.NewClient(ghToken)
+
+			ghc.ResponseCallback = func(resp *github.Response) {
+				if resp == nil {
+					return
+				}
+				if resp.Rate.Remaining < 1000 {
+					Warnf(
+						"GitHub API rate: remaining %v/%v; resetting in %s",
+						resp.Rate.Remaining,
+						resp.Rate.Limit,
+						resp.Rate.Reset.Sub(time.Now()).Round(time.Second),
+					)
+				}
 			}
-			for _, v := range deps {
-				Ln(v)
+
+			return nil
+		},
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:        "token",
+				Usage:       "GitHub API token need for enriching the results with repo info.",
+				Destination: &ghToken,
+				EnvVar:      "GH_TOKEN",
+			},
+			&cli.StringFlag{
+				Name:  "type",
+				Usage: "Type of dependents to select (default=REPOSITORY).",
+			},
+			&cli.StringFlag{
+				Name:  "pkg",
+				Usage: "Select a specific subpackage.",
+			},
+			&cli.IntFlag{
+				Name:  "limit",
+				Usage: "How many results to output.",
+			},
+			&cli.BoolFlag{
+				Name:  "info",
+				Usage: "Print dependents stats and exit.",
+			},
+			&cli.BoolFlag{
+				Name:  "json",
+				Usage: "Output as json.",
+			},
+			&cli.BoolFlag{
+				Name:  "rich",
+				Usage: "Enrich JSON output with repository info.",
+			},
+			&cli.BoolFlag{
+				Name:  "pretty",
+				Usage: "Pretty-fy JSON; this is for debug purposes only.",
+			},
+		},
+		Action: func(c *cli.Context) error {
+			target := c.Args().First()
+
+			if target == "" {
+				cli.ShowAppHelp(c)
+				return nil
 			}
-		} else {
-			// Request the HTML page.
-			res, err := http.Get("https://github.com/eslint/eslint/network/dependents?dependent_type=REPOSITORY")
-			if err != nil {
-				Fataln(err)
+			Errorln(LimeBG(target))
+
+			asJSON := c.Bool("json")
+			infoOnly := c.Bool("info")
+			enrich := c.Bool("rich")
+			pretty := c.Bool("pretty")
+			limit := c.Int("limit")
+			pkg := c.String("pkg")
+
+			typ := c.String("type")
+			if typ == "" {
+				typ = depnetloader.TYPE_REPOSITORY
 			}
-			defer res.Body.Close()
-			if res.StatusCode != 200 {
-				Fatalf("status code error: %d %s", res.StatusCode, res.Status)
+
+			if infoOnly {
+				info, err :=
+					depnetloader.NewLoader(target).
+						Type(typ).
+						GetInfo()
+				if err != nil {
+					panic(err)
+				}
+
+				JSON(pretty, info)
+				return nil
 			}
-			deps, err := depnetloader.ExtractDependentsFromReader(res.Body)
-			if err != nil {
-				panic(err)
+
+			{
+				count := 0
+				err :=
+					depnetloader.
+						NewLoader(target).
+						SubPackage(pkg).
+						Type(typ).
+						DoWithCallback(func(dep string) bool {
+							count++
+
+							if limit > 0 && count > limit {
+								return false
+							}
+							if asJSON {
+								res := M{
+									"full_name": dep,
+								}
+
+								if enrich {
+									if ghClient == nil {
+										panic("The --rich mode needs a github token to function.")
+									}
+									owner, repo, err := depnetloader.SplitOwnerRepo(target)
+									if err != nil {
+										panic(err)
+									}
+									ghRepo, err := ghClient.GetRepo(owner, repo)
+									if err != nil {
+										panic(err)
+									}
+									res["repo"] = ghRepo
+								}
+								JSON(pretty, res)
+							} else {
+								Ln(dep)
+							}
+							return true
+						})
+				if err != nil {
+					panic(err)
+				}
 			}
-			for _, v := range deps {
-				Ln(v)
-			}
-		}
+			return nil
+		},
 	}
 
-	Ln(strings.Repeat("-", 50))
+	sort.Sort(cli.FlagsByName(app.Flags))
+	sort.Sort(cli.CommandsByName(app.Commands))
 
-	// Packages:
-	if true {
-		if true {
-			// Request the HTML page.
-			res, err := os.Open(os.ExpandEnv("$GOPATH/src/github.com/gagliardetto/depnet/test-data/PACKAGE.html"))
-			if err != nil {
-				Fataln(err)
-			}
-			deps, err := depnetloader.ExtractDependentsFromReader(res)
-			if err != nil {
-				panic(err)
-			}
-			for _, v := range deps {
-				Ln(v)
-			}
-		} else {
-			// Request the HTML page.
-			res, err := http.Get("https://github.com/eslint/eslint/network/dependents?dependent_type=PACKAGE")
-			if err != nil {
-				Fataln(err)
-			}
-			defer res.Body.Close()
-			if res.StatusCode != 200 {
-				Fatalf("status code error: %d %s", res.StatusCode, res.Status)
-			}
-			deps, err := depnetloader.ExtractDependentsFromReader(res.Body)
-			if err != nil {
-				panic(err)
-			}
-			for _, v := range deps {
-				Ln(v)
-			}
-		}
+	err := app.Run(os.Args)
+	if err != nil {
+		log.Fatal(err)
 	}
+}
 
-	repos := []string{
-		"eslint/eslint",     // NPM - javascript
-		"numpy/numpy",       // python
-		"symfony/symfony",   // Composer - php
-		"dotnet/maui",       // dotnet - C#
-		"apache/maven",      // Maven - java
-		"rubygems/rubygems", // rubygems - ruby
-		"yarnpkg/yarn",      // yarn - javascript
+func JSON(pretty bool, v interface{}) {
+	if pretty {
+		ToJSONIndentToStdout(v)
+	} else {
+		ToJSONToStdout(v)
 	}
-	for _, repo := range repos { // Node:
-		Ln(LimeBG(repo))
-		{
-			info, err :=
-				depnetloader.NewLoader(repo).
-					Type(depnetloader.TYPE_REPOSITORY).
-					GetInfo()
-			if err != nil {
-				panic(err)
-			}
-			spew.Dump(info)
-		}
-		{
-			count := int64(0)
-			err :=
-				depnetloader.NewLoader(repo).
-					Type(depnetloader.TYPE_REPOSITORY).
-					DoWithCallback(func(dep string) bool {
-						count++
-						Ln(dep)
-						if count > 1000 {
-							return false
-						}
-						return true
-					})
-			if err != nil {
-				panic(err)
-			}
-		}
-	}
+}
 
+func ToJSONIndentToStdout(v interface{}) {
+	j, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	Ln(string(j))
+}
+
+func ToJSONToStdout(v interface{}) {
+	j, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	Ln(string(j))
 }

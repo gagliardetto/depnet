@@ -69,38 +69,46 @@ type Loader struct {
 	subPackage    string
 }
 
-func NewLoader(repo string) *Loader {
-	if repo == "" {
+func NewLoader(repoRaw string) *Loader {
+	if repoRaw == "" {
 		panic("repo not set")
 	}
 
-	repo = strings.TrimSpace(repo)
-	repo = strings.TrimPrefix(repo, "https://github.com")
-	repo = strings.TrimPrefix(repo, "http://github.com")
-	repo = strings.TrimPrefix(repo, "/")
-	repo = strings.TrimSuffix(repo, "/")
+	repoRaw = strings.TrimSpace(repoRaw)
+	repoRaw = strings.TrimPrefix(repoRaw, "https://github.com")
+	repoRaw = strings.TrimPrefix(repoRaw, "http://github.com")
+	repoRaw = strings.TrimPrefix(repoRaw, "/")
+	repoRaw = strings.TrimSuffix(repoRaw, "/")
 
-	parts := strings.Split(repo, "/")
-	if len(parts) != 2 {
-		panic(Sf("repo not valid: %q", repo))
-	}
-
-	owner := parts[0]
-	owner = strings.TrimSpace(owner)
-	if owner == "" {
-		panic(Sf("owner not valid: %q", owner))
-	}
-
-	repoName := parts[1]
-	repoName = strings.TrimSpace(repoName)
-	if repoName == "" {
-		panic(Sf("repoName not valid: %q", repoName))
+	owner, repoName, err := SplitOwnerRepo(repoRaw)
+	if err != nil {
+		panic(err)
 	}
 
 	return &Loader{
 		owner:    owner,
 		repoName: repoName,
 	}
+}
+
+func SplitOwnerRepo(raw string) (string, string, error) {
+	parts := strings.Split(raw, "/")
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("raw not valid: %q", raw)
+	}
+
+	owner := parts[0]
+	owner = strings.TrimSpace(owner)
+	if owner == "" {
+		return "", "", fmt.Errorf("owner not valid: %q", owner)
+	}
+
+	repo := parts[1]
+	repo = strings.TrimSpace(repo)
+	if repo == "" {
+		return "", "", fmt.Errorf("repo not valid: %q", repo)
+	}
+	return owner, repo, nil
 }
 
 const (
@@ -218,18 +226,18 @@ func (ldr *Loader) validateBasic() error {
 // Info provides information about the dependency network of
 // a package.
 type Info struct {
-	Dependents *DependentsInfo
+	Dependents *DependentsInfo `json:"dependents"`
 	// TODO: add Dependencies??
 }
 
 type DependentsInfo struct {
-	SubPackages SubPackageSlice
-	Counts      *Counts
+	SubPackages SubPackageSlice `json:"subpackages"`
+	Counts      *Counts         `json:"counts"`
 }
 
 type Counts struct {
-	Repositories int
-	Packages     int
+	Repositories int `json:"repositories"`
+	Packages     int `json:"packages"`
 }
 
 func (ldr *Loader) GetInfo() (*Info, error) {
@@ -359,9 +367,9 @@ func extractNextPage(doc *goquery.Document) string {
 }
 
 type SubPackage struct {
-	Name     string
-	URL      string
-	Selected bool
+	Name     string `json:"name"`
+	URL      string `json:"-"`
+	Selected bool   `json:"-"`
 }
 
 type SubPackageSlice []*SubPackage
