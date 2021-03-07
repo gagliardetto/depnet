@@ -103,7 +103,7 @@ func main() {
 			enrich := c.Bool("rich")
 			pretty := c.Bool("pretty")
 			limit := c.Int("limit")
-			pkg := c.String("pkg")
+			subPackage := c.String("pkg")
 
 			typ := c.String("type")
 			if typ == "" {
@@ -128,7 +128,7 @@ func main() {
 				err :=
 					depnetloader.
 						NewLoader(target).
-						SubPackage(pkg).
+						SubPackage(subPackage).
 						Type(typ).
 						DoWithCallback(func(dep string) bool {
 							count++
