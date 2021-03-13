@@ -178,26 +178,14 @@ func main() {
 	}
 }
 
+// JSON pretty prints v to stdout. It panics on any error.
 func JSON(pretty bool, v interface{}) {
+	w := json.NewEncoder(os.Stdout)
 	if pretty {
-		ToJSONIndentToStdout(v)
-	} else {
-		ToJSONToStdout(v)
+		w.SetIndent("", " ")
 	}
-}
-
-func ToJSONIndentToStdout(v interface{}) {
-	j, err := json.MarshalIndent(v, "", "  ")
+	err := w.Encode(v)
 	if err != nil {
 		panic(err)
 	}
-	Ln(string(j))
-}
-
-func ToJSONToStdout(v interface{}) {
-	j, err := json.Marshal(v)
-	if err != nil {
-		panic(err)
-	}
-	Ln(string(j))
 }
