@@ -10,20 +10,20 @@ It currently only supports retrieving dependents (i.e. repositories/packages tha
 # Get info/stats on dependents of a repository:
 depnet --info --pretty eslint/eslint
 
-# Get the first dependent repository for `eslint/eslint`:
-depnet --type=REPOSITORY --json --pretty --limit=1 eslint/eslint
+# Get the first 3 dependent repositories for `eslint/eslint`:
+depnet --type=REPOSITORY --json --limit=3 eslint/eslint
 
-# Get the first dependent package for `eslint/eslint`:
-depnet --type=PACKAGE --json --pretty --limit=1 eslint/eslint
+# Get the first 3 dependent packages for `eslint/eslint`:
+depnet --type=PACKAGE --json --limit=3 eslint/eslint
 
-# Get the first dependent package for `eslint/eslint`, specifying a package (see info output):
-depnet --type=PACKAGE --json --pretty --limit=1 --pkg="eslint-config-eslint" eslint/eslint
+# Get the first 3 dependent packages for `eslint/eslint`, specifying a package (see info output):
+depnet --type=PACKAGE --json --limit=3 --pkg="eslint-config-eslint" eslint/eslint
 
 # Get the first 10 dependent repositories of `eslint/eslint`, with newline output:
 depnet --type=REPOSITORY --limit=10 eslint/eslint
 
-# Get the first dependent package for `eslint/eslint`, but one JSON object per line (no pretty-printing):
-depnet --type=REPOSITORY --json --limit=1 eslint/eslint
+# Get the first 3 dependent packages for `eslint/eslint`, but one JSON object per line (no pretty-printing):
+depnet --type=REPOSITORY --json --limit=3 eslint/eslint
 
 # Get the first dependent package for `eslint/eslint`, and add repository info from GitHub:
 # NOTE: need a github token (you can set it with $GH_TOKEN env var).
