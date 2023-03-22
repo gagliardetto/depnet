@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -31,9 +32,7 @@ var (
 	defaultKeepAlive           = 180 * time.Second
 )
 
-var (
-	httpClient = NewHTTP()
-)
+var httpClient = NewHTTP()
 
 func NewHTTPTransport() *http.Transport {
 	return &http.Transport{
@@ -135,6 +134,7 @@ func (ldr *Loader) SubPackage(pkg string) *Loader {
 	ldr.subPackage = pkg
 	return ldr
 }
+
 func (ldr *Loader) DoWithCallback(callback func(dep string) bool) error {
 	if callback == nil {
 		return errors.New("callback is nil")
@@ -154,6 +154,7 @@ func (ldr *Loader) DoWithCallback(callback func(dep string) bool) error {
 		ldr.repoName,
 		vals.Encode(),
 	)
+	fmt.Fprintf(os.Stderr, "Loading: first page of dependents...\n")
 	doc, err := loadPage(dst)
 	if err != nil {
 		return err
@@ -167,7 +168,7 @@ func (ldr *Loader) DoWithCallback(callback func(dep string) bool) error {
 			if !is {
 				sub := subs.ByName(ldr.subPackage)
 				if sub == nil {
-					return fmt.Errorf("Subpackage %q not found.", ldr.subPackage)
+					return fmt.Errorf("subpackage %q not found", ldr.subPackage)
 				}
 
 				{
@@ -181,33 +182,42 @@ func (ldr *Loader) DoWithCallback(callback func(dep string) bool) error {
 		}
 	}
 
+	started := time.Now()
+	defer func() {
+		fmt.Fprintf(os.Stderr, "Done in %s\n", time.Since(started))
+	}()
+
 	// Process the first page:
-	for _, v := range extractDependents(doc) {
-		doContinue := callback(v)
+	for _, val := range extractDependents(doc) {
+		doContinue := callback(val)
 		if !doContinue {
 			return nil
 		}
 	}
 
+	pageNum := 1
 	nextPage := extractNextPage(doc)
-
 	for {
+		pageNum++
 		if nextPage == "" {
+			fmt.Fprintf(os.Stderr, "Loading: no more pages of dependents...\n")
 			return nil
 		}
+		fmt.Fprintf(os.Stderr, "Loading: next page (%v, %s) of dependents...", pageNum, nextPage)
 		doc, err := loadPage(nextPage)
 		if err != nil {
 			return err
 		}
-		for _, v := range extractDependents(doc) {
-			doContinue := callback(v)
+		dependents := extractDependents(doc)
+		fmt.Fprintf(os.Stderr, Lime(" got %d dependents")+"\n", len(dependents))
+		for _, val := range dependents {
+			doContinue := callback(val)
 			if !doContinue {
 				return nil
 			}
 		}
 		nextPage = extractNextPage(doc)
 	}
-
 }
 
 func (ldr *Loader) validateBasic() error {
@@ -304,11 +314,28 @@ func newRequest() *request.Request {
 }
 
 func loadPage(url string) (*goquery.Document, error) {
-
 	req := newRequest()
-	resp, err := req.Get(url)
-	if err != nil {
-		return nil, err
+
+	var resp *request.Response
+	errs := RetryExponentialBackoff(7, time.Second, func() (err error) {
+		resp, err = req.Get(url)
+		if err != nil {
+			return err
+		}
+
+		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotFound {
+			// TODO: catch rate limit error, and wait
+			return fmt.Errorf(
+				"status code is: %v (%s)",
+				resp.StatusCode,
+				resp.Status,
+			)
+		}
+		// nil on 200 and 404
+		return nil
+	})
+	if len(errs) > 0 {
+		return nil, errors.New(FormatErrorArray("", errs))
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, formatRawResponseBodyError(resp)
@@ -322,6 +349,7 @@ func loadPage(url string) (*goquery.Document, error) {
 	// Load the HTML document
 	return goquery.NewDocumentFromReader(reader)
 }
+
 func formatRawResponseBodyError(resp *request.Response) error {
 	// Get the body as text:
 	body, err := resp.Text()
@@ -374,7 +402,6 @@ type SubPackage struct {
 
 type SubPackageSlice []*SubPackage
 
-//
 func (sl SubPackageSlice) IsSelected(name string) bool {
 	for _, item := range sl {
 		if item.Name == name {

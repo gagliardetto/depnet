@@ -14,15 +14,14 @@ import (
 	"github.com/urfave/cli"
 )
 
-var gitCommitSHA = ""
 var (
-	ghClient *ghc.Client
+	gitCommitSHA = ""
+	ghClient     *ghc.Client
 )
 
 type M map[string]interface{}
 
 func main() {
-
 	var ghToken string
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	app := &cli.App{
@@ -30,7 +29,6 @@ func main() {
 		Version:     gitCommitSHA,
 		Description: "Unofficial Github Dependency Network CLI — https://github.com/gagliardetto/depnet",
 		Before: func(c *cli.Context) error {
-
 			if ghToken == "" {
 				return nil
 			}
@@ -111,10 +109,9 @@ func main() {
 			}
 
 			if infoOnly {
-				info, err :=
-					depnetloader.NewLoader(target).
-						Type(typ).
-						GetInfo()
+				info, err := depnetloader.NewLoader(target).
+					Type(typ).
+					GetInfo()
 				if err != nil {
 					panic(err)
 				}
@@ -124,43 +121,47 @@ func main() {
 			}
 
 			{
+				ghCache := map[string]*github.Repository{}
 				count := 0
-				err :=
-					depnetloader.
-						NewLoader(target).
-						SubPackage(subPackage).
-						Type(typ).
-						DoWithCallback(func(dep string) bool {
-							count++
+				err := depnetloader.
+					NewLoader(target).
+					SubPackage(subPackage).
+					Type(typ).
+					DoWithCallback(func(dep string) bool {
+						count++
 
-							if limit > 0 && count > limit {
-								return false
+						if limit > 0 && count > limit {
+							return false
+						}
+						if asJSON {
+							res := M{
+								"full_name": dep,
 							}
-							if asJSON {
-								res := M{
-									"full_name": dep,
-								}
 
-								if enrich {
-									if ghClient == nil {
-										panic("The --rich mode needs a github token to function.")
-									}
-									owner, repo, err := depnetloader.SplitOwnerRepo(target)
+							if enrich {
+								if ghClient == nil {
+									panic("The --rich mode needs a github token to function.")
+								}
+								owner, repo, err := depnetloader.SplitOwnerRepo(target)
+								if err != nil {
+									panic(err)
+								}
+								ghRepo, ok := ghCache[dep]
+								if !ok {
+									ghRepo, err = ghClient.GetRepo(owner, repo)
 									if err != nil {
 										panic(err)
 									}
-									ghRepo, err := ghClient.GetRepo(owner, repo)
-									if err != nil {
-										panic(err)
-									}
-									res["repo"] = ghRepo
+									ghCache[dep] = ghRepo
 								}
-								JSON(pretty, res)
-							} else {
-								Ln(dep)
+								res["repo"] = ghRepo
 							}
-							return true
-						})
+							JSON(pretty, res)
+						} else {
+							Ln(dep)
+						}
+						return true
+					})
 				if err != nil {
 					panic(err)
 				}
