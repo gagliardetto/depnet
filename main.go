@@ -127,7 +127,7 @@ func main() {
 					NewLoader(target).
 					SubPackage(subPackage).
 					Type(typ).
-					DoWithCallback(func(dep string) bool {
+					DoWithCallback(func(dependent string) bool {
 						count++
 
 						if limit > 0 && count > limit {
@@ -135,30 +135,30 @@ func main() {
 						}
 						if asJSON {
 							res := M{
-								"full_name": dep,
+								"full_name": dependent,
 							}
 
 							if enrich {
 								if ghClient == nil {
 									panic("The --rich mode needs a github token to function.")
 								}
-								owner, repo, err := depnetloader.SplitOwnerRepo(target)
+								owner, repo, err := depnetloader.SplitOwnerRepo(dependent)
 								if err != nil {
 									panic(err)
 								}
-								ghRepo, ok := ghCache[dep]
+								ghRepo, ok := ghCache[dependent]
 								if !ok {
 									ghRepo, err = ghClient.GetRepo(owner, repo)
 									if err != nil {
 										panic(err)
 									}
-									ghCache[dep] = ghRepo
+									ghCache[dependent] = ghRepo
 								}
 								res["repo"] = ghRepo
 							}
 							JSON(pretty, res)
 						} else {
-							Ln(dep)
+							Ln(dependent)
 						}
 						return true
 					})
