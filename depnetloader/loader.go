@@ -190,13 +190,16 @@ func (ldr *Loader) DoWithCallback(callback func(dep string) bool) error {
 		debugf("- Packages that import it: %v\n", packageCount)
 	}
 
+	numDependents := 0
 	started := time.Now()
 	defer func() {
-		debugf("Done in %s\n", time.Since(started))
+		debugf("Done in %s; got a list of %v dependents\n", time.Since(started), numDependents)
 	}()
 
 	// Process the first page:
-	for _, val := range extractDependents(doc) {
+	dependentsFirstPage := extractDependents(doc)
+	numDependents += len(dependentsFirstPage)
+	for _, val := range dependentsFirstPage {
 		doContinue := callback(val)
 		if !doContinue {
 			return nil
@@ -217,7 +220,8 @@ func (ldr *Loader) DoWithCallback(callback func(dep string) bool) error {
 			return err
 		}
 		dependents := extractDependents(doc)
-		debugf(Lime(" got %d dependents")+"\n", len(dependents))
+		numDependents += len(dependents)
+		debugf(Lime(" got %d dependents (%v total)")+"\n", len(dependents), numDependents)
 		for _, val := range dependents {
 			doContinue := callback(val)
 			if !doContinue {
