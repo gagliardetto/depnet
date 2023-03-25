@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -154,7 +153,7 @@ func (ldr *Loader) DoWithCallback(callback func(dep string) bool) error {
 		ldr.repoName,
 		vals.Encode(),
 	)
-	fmt.Fprintf(os.Stderr, "Loading: first page of dependents...\n")
+	debugf("Loading: first page of dependents of %s...\n", ldr.owner+"/"+ldr.repoName)
 	doc, err := loadPage(dst)
 	if err != nil {
 		return err
@@ -179,12 +178,21 @@ func (ldr *Loader) DoWithCallback(callback func(dep string) bool) error {
 					}
 				}
 			}
+
+			debugf("Loading: first page of dependents of %s, pkg %q...\n", ldr.owner+"/"+ldr.repoName, ldr.subPackage)
 		}
+	}
+
+	// extract counts:
+	{
+		repoCount, packageCount := extractCounts(doc)
+		debugf("- Repos that import it: %v\n", repoCount)
+		debugf("- Packages that import it: %v\n", packageCount)
 	}
 
 	started := time.Now()
 	defer func() {
-		fmt.Fprintf(os.Stderr, "Done in %s\n", time.Since(started))
+		debugf("Done in %s\n", time.Since(started))
 	}()
 
 	// Process the first page:
@@ -200,16 +208,16 @@ func (ldr *Loader) DoWithCallback(callback func(dep string) bool) error {
 	for {
 		pageNum++
 		if nextPage == "" {
-			fmt.Fprintf(os.Stderr, "Loading: no more pages of dependents...\n")
+			debugf("Loading: no more pages of dependents...\n")
 			return nil
 		}
-		fmt.Fprintf(os.Stderr, "Loading: next page (%v, %s) of dependents...", pageNum, nextPage)
+		debugf("Loading: next page (%v, %s) of dependents...", pageNum, nextPage)
 		doc, err := loadPage(nextPage)
 		if err != nil {
 			return err
 		}
 		dependents := extractDependents(doc)
-		fmt.Fprintf(os.Stderr, Lime(" got %d dependents")+"\n", len(dependents))
+		debugf(Lime(" got %d dependents")+"\n", len(dependents))
 		for _, val := range dependents {
 			doContinue := callback(val)
 			if !doContinue {
@@ -242,7 +250,6 @@ type Info struct {
 
 type DependentsInfo struct {
 	SubPackages SubPackageSlice `json:"subpackages"`
-	Counts      *Counts         `json:"counts"`
 }
 
 type Counts struct {
@@ -277,11 +284,12 @@ func (ldr *Loader) GetInfo() (*Info, error) {
 	// TODO: validate what has been extracted???
 	info.Dependents.SubPackages = extractSubPackages(doc)
 
-	repoCount, packageCount := extractCounts(doc)
-	info.Dependents.Counts = &Counts{
-		Repositories: repoCount,
-		Packages:     packageCount,
-	}
+	// repoCount, packageCount := extractCounts(doc)
+	// NOTE: these counts are for the FIRST subpackage only.
+	// info.Dependents.Counts = &Counts{
+	// 	Repositories: repoCount,
+	// 	Packages:     packageCount,
+	// }
 
 	return info, nil
 }
@@ -457,16 +465,17 @@ func extractCounts(doc *goquery.Document) (repoCount int, packageCount int) {
 		// For each item found, get the band and title
 
 		nameText := strings.TrimSpace(count.Text())
+		nameText = strings.ToLower(nameText)
 
 		processedString := countCleaner.ReplaceAllString(nameText, "")
-		if strings.Contains(nameText, "Repositor") {
+		if strings.Contains(nameText, "repositor") {
 			parsed, err := Atoi(processedString)
 			if err != nil {
 				panic(err)
 			}
 			repoCount = parsed
 		}
-		if strings.Contains(nameText, "Package") {
+		if strings.Contains(nameText, "package") {
 			parsed, err := Atoi(processedString)
 			if err != nil {
 				panic(err)

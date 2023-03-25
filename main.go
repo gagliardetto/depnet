@@ -88,6 +88,8 @@ func main() {
 			},
 		},
 		Action: func(c *cli.Context) error {
+			depnetloader.EnableDebug = true
+
 			target := c.Args().First()
 
 			if target == "" {
