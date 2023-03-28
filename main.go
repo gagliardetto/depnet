@@ -139,7 +139,6 @@ func main() {
 							res := M{
 								"full_name": dependent,
 							}
-
 							if enrich {
 								if ghClient == nil {
 									panic("The --rich mode needs a github token to function.")

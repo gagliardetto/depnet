@@ -65,6 +65,7 @@ type Loader struct {
 
 	dependentType string
 	subPackage    string
+	countCallback func(*Counts)
 }
 
 func NewLoader(repoRaw string) *Loader {
@@ -134,6 +135,11 @@ func (ldr *Loader) SubPackage(pkg string) *Loader {
 	return ldr
 }
 
+func (ldr *Loader) CountsCallback(callback func(*Counts)) *Loader {
+	ldr.countCallback = callback
+	return ldr
+}
+
 func (ldr *Loader) DoWithCallback(callback func(dep string) bool) error {
 	if callback == nil {
 		return errors.New("callback is nil")
@@ -188,6 +194,9 @@ func (ldr *Loader) DoWithCallback(callback func(dep string) bool) error {
 		repoCount, packageCount := extractCounts(doc)
 		debugf("- Repos that import it: %v\n", repoCount)
 		debugf("- Packages that import it: %v\n", packageCount)
+		if ldr.countCallback != nil {
+			ldr.countCallback(&Counts{Repositories: repoCount, Packages: packageCount})
+		}
 	}
 
 	numDependents := 0
